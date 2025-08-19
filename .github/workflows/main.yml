@@ -27,7 +27,7 @@ jobs:
         run: python main.py
 
       - name: Upload dat file as artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3  # 将这里从 v2 改为 v3
         with:
           name: isp_data
           path: ISP_China*.dat
