@@ -2,8 +2,10 @@ name: Generate IP Data
 
 on:
   schedule:
-    - cron: '0 0 * * *'
+    # 北京时间 00:01 运行，对应 UTC 16:01
+    - cron: '1 16 * * *'
   workflow_dispatch:
+    # 允许手动触发
 
 jobs:
   build:
