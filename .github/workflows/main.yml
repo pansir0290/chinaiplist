@@ -1,64 +1,99 @@
-name: Auto Update and Clean ISP Data
+name: IP Data Daily Processor
 
 on:
+  workflow_dispatch:    # 显式声明手动触发配置
+    inputs:
+      debug_mode:
+        description: 'Enable debug logging'
+        required: false
+        default: 'false'
   schedule:
-    - cron: '1 16 * * *'  # 北京时间00:01触发
-  workflow_dispatch:
+    - cron: '1 16 * * *'  # UTC时间16:01 (北京时间00:01)
 
 permissions:
-  contents: write  # 关键权限设置
+  contents: write   # 必需写权限
+  actions: read
 
 jobs:
-  process-data:
+  data-process:
+    name: Process & Clean Data
     runs-on: ubuntu-latest
+    env:
+      DEBUG_MODE: ${{ inputs.debug_mode || 'false' }}
 
     steps:
-      - name: Checkout code
+      # ---------- 初始化步骤 ----------
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 获取完整历史记录
+          fetch-depth: 0  # 完整克隆用于历史比对
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      # ---------- 数据处理步骤 ----------
+      - name: Generate Data File
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
-
-      - name: Generate new data
-        run: |
-          pip install requests urllib3
-          python main.py
-          ls -lh ISP_China*.dat  # 生成后验证文件
-
-      - name: Clean old files
-        run: |
-          # 获取7天前日期（UTC时区）
-          cutoff_date=$(date -d "7 days ago" +%Y%m%d)
-          echo "正在清理早于 $cutoff_date 的文件..."
+          python-version: "3.10"
           
-          # 匹配所有数据文件并清理
-          for file in ISP_China*.dat; do
-            # 提取纯数字日期部分
-            date_str=$(echo "$file" | grep -Eo '[0-9]{8}' | head -1)
+        run: |
+          pip install -r requirements.txt  # 假设有依赖文件
+          python main.py
+          echo "生成文件列表:"
+          ls -l ISP_China*.dat
+
+      # ---------- 智能清理步骤 ----------
+      - name: Intelligent File Cleanup
+        id: cleanup
+        shell: bash
+        run: |
+          # 启用调试模式
+          if [ "$DEBUG_MODE" = "true" ]; then
+            set -x
+          fi
+
+          # 日期计算（兼容跨月/跨年）
+          cutoff_date=$(date -d "7 days ago" +%Y%m%d)
+          echo "CUTOFF_DATE=${cutoff_date}" >> $GITHUB_ENV
+          
+          # 文件清理逻辑
+          echo "▶︎ 开始扫描文件..."
+          remaining_files=()
+          
+          for file in ISP_China_*.dat; do
+            if [[ ! -f "$file" ]]; then continue; fi
             
-            if [[ "$date_str" =~ ^[0-9]{8}$ ]]; then
-              if [ "$date_str" -lt "$cutdate" ]; then
-                echo "删除过期文件: $file (日期: $date_str)"
+            # 动态提取日期（支持多种命名格式）
+            date_part=$(echo "$file" | grep -Eo '[0-9]{8}' | head -1)
+            
+            if [[ "$date_part" =~ ^[0-9]{8}$ ]]; then
+              if [ "$date_part" -lt "$cutoff_date" ]; then
+                echo "🚫 删除过期文件: ${file} (${date_part} < ${cutoff_date})"
                 rm -v "$file"
               else
-                echo "保留有效文件: $file (日期: $date_str)"
+                remaining_files+=("$file")
+                echo "✅ 保留文件: ${file}"
               fi
             else
-              echo "忽略格式异常文件: $file"
+              echo "⚠️ 忽略非常规文件: ${file}"
             fi
           done
 
-      - name: Commit changes
+          # 生成清理报告
+          echo "剩余文件数量: ${#remaining_files[@]}"
+          printf "%-30s %s\n" "文件名" "日期" > cleanup-report.md
+          for f in "${remaining_files[@]}"; do
+            printf "%-30s %s\n" "$f" "$(date -r "$f" +%Y-%m-%d)" >> cleanup-report.md
+          done
+
+      # ---------- 提交变更步骤 ----------
+      - name: Auto-Commit Changes
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
-          commit_message: "Auto: Update & Clean Data"
+          commit_message: | 
+            Automated Data Update
+            - 新增文件: ${{ steps.generate.outputs.new_files }}
+            - 删除文件: ${{ steps.cleanup.outputs.deleted_files }}
           file_pattern: |
-            ISP_China*.dat
-            !ISP_China_*.dat  # 反模式确保删除被提交
-          commit_user_name: "Data Bot"
-          commit_user_email: "data-bot@noreply.github.com"
-          add_options: '-u'  # 强制更新索引
+            ISP_China_*.dat
+            cleanup-report.md
+          commit_options: '--verbose --allow-empty'
+          add_options: '-u -v'
