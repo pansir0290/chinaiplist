@@ -26,6 +26,28 @@ jobs:
       - name: Run script to generate data
         run: python main.py
 
+      - name: Clean up old files (保留近7天)
+        run: |
+          # 获取当前日期和七天前的日期（格式：YYYYMMDD）
+          current_date=$(date +%Y%m%d)
+          seven_days_ago=$(date -d "$current_date -7 days" +%Y%m%d)
+          
+          # 遍历匹配的文件并删除旧文件
+          shopt -s nullglob
+          for file in ISP_China_*.dat; do
+            # 从文件名提取日期部分（假设文件名格式：ISP_China_YYYYMMDD.dat）
+            date_part=$(basename "$file" .dat | cut -d'_' -f3)
+            
+            # 检查是否为有效日期格式
+            if [[ "$date_part" =~ ^[0-9]{8}$ ]]; then
+              # 比较日期并删除过期文件
+              if [ "$date_part" -le "$seven_days_ago" ]; then
+                echo "删除旧文件: $file"
+                rm -v "$file"
+              fi
+            fi
+          done
+
       - name: Commit and push changes
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
