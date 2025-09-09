@@ -50,28 +50,22 @@ jobs:
             set -x
           fi
 
-          cutoff_date=$(date -d "7 days ago" +%Y-%m-%d)
-          echo "CUTOFF_DATE=${cutoff_date}" >> $GITHUB_ENV
+          cutoff_date_int=$(date -d "7 days ago" +%Y%m%d)
+          echo "CUTOFF_DATE=${cutoff_date_int}" >> $GITHUB_ENV
 
-          remaining_files=()
-          for file in ISP_China*.dat
-          do
-            if [[ ! -f "$file" ]]; then
-              continue
-            fi
-
-            date_part=$(echo "$file" | grep -Eo '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1)
-            if [[ "$date_part" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
-              # 使用 -lt 进行数字比较，确保兼容性
-              if [ "${date_part//-}" -lt "${cutoff_date//-}" ]; then
-                echo "🚫 删除过期文件: ${file}"
-                rm -v "$file"
-              else
-                remaining_files+=("$file")
+          for file in ISP_China*.dat; do
+            if [ -f "$file" ]; then
+              date_part=$(echo "$file" | grep -Eo '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1)
+              if [ -n "$date_part" ]; then
+                file_date_int=$(echo "$date_part" | tr -d '-')
+                if [ "$file_date_int" -lt "$cutoff_date_int" ]; then
+                  echo "🚫 删除过期文件: ${file}"
+                  rm -v "$file"
+                fi
               fi
             fi
           done
-          # 确保不删除 ISP_China_latest.dat
+
           if [ -f ISP_China_latest.dat ]; then
             echo "✅ 保留最新文件: ISP_China_latest.dat"
           fi
@@ -98,7 +92,6 @@ jobs:
       
       - name: Create index.html
         run: |
-          # 确保链接指向 GitHub Pages 的正确路径
           REPO_URL="https://pansir0290.github.io/chinaiplist"
           echo "此页面为占位页。数据文件位于：<a href=\"${REPO_URL}/ISP_China_latest.dat\">点击此处获取最新文件</a>" > index.html
       
