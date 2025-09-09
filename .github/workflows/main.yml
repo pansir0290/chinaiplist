@@ -62,7 +62,8 @@ jobs:
 
             date_part=$(echo "$file" | grep -Eo '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1)
             if [[ "$date_part" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
-              if [ "$date_part" \< "$cutoff_date" ]; then
+              # 使用 -lt 进行数字比较，确保兼容性
+              if [ "${date_part//-}" -lt "${cutoff_date//-}" ]; then
                 echo "🚫 删除过期文件: ${file}"
                 rm -v "$file"
               else
