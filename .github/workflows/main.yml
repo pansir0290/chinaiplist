@@ -39,6 +39,8 @@ jobs:
           python main.py
           echo "生成文件列表:"
           ls -l ISP_China*.dat
+          # 将最新文件复制为静态名称
+          cp ISP_China$(date +%Y-%m-%d).dat ISP_China_latest.dat
 
       - name: Intelligent File Cleanup
         id: cleanup
@@ -68,6 +70,10 @@ jobs:
               fi
             fi
           done
+          # 确保不删除 ISP_China_latest.dat
+          if [ -f ISP_China_latest.dat ]; then
+            echo "✅ 保留最新文件: ISP_China_latest.dat"
+          fi
 
       - name: Auto-Commit Changes
         uses: stefanzweifel/git-auto-commit-action@v4
@@ -86,11 +92,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        
+        with:
+          fetch-depth: 0
+      
       - name: Create index.html
         run: |
-          REPO_URL="https://pansir0290.github.io/${{ github.repository }}"
-          echo "此页面为占位页。数据文件位于：<a href=\"${REPO_URL}/ISP_China$(date +%Y-%m-%d).dat\">点击此处获取今日文件</a>" > index.html
+          # 确保链接指向 GitHub Pages 的正确路径
+          REPO_URL="https://pansir0290.github.io/chinaiplist"
+          echo "此页面为占位页。数据文件位于：<a href=\"${REPO_URL}/ISP_China_latest.dat\">点击此处获取最新文件</a>" > index.html
       
       - name: Setup Pages
         uses: actions/configure-pages@v4
