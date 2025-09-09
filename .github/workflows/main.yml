@@ -50,15 +50,15 @@ jobs:
             set -x
           fi
 
-          cutoff_date_int=$(date -d "7 days ago" +%Y%m%d)
-          echo "CUTOFF_DATE=${cutoff_date_int}" >> $GITHUB_ENV
+          cutoff_date=$(date -d "7 days ago" +%Y-%m-%d)
+          echo "CUTOFF_DATE=${cutoff_date}" >> $GITHUB_ENV
 
           for file in ISP_China*.dat; do
             if [ -f "$file" ]; then
               date_part=$(echo "$file" | grep -Eo '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1)
               if [ -n "$date_part" ]; then
-                file_date_int=$(echo "$date_part" | tr -d '-')
-                if [ "$file_date_int" -lt "$cutoff_date_int" ]; then
+                # 这种比较方式在大多数 Shell 环境中都非常可靠
+                if [[ "$date_part" < "$cutoff_date" ]]; then
                   echo "🚫 删除过期文件: ${file}"
                   rm -v "$file"
                 fi
