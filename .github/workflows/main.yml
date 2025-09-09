@@ -87,6 +87,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         
+      - name: Create index.html
+        run: |
+          REPO_URL="https://pansir0290.github.io/${{ github.repository }}"
+          echo "此页面为占位页。数据文件位于：<a href=\"${REPO_URL}/ISP_China$(date +%Y-%m-%d).dat\">点击此处获取今日文件</a>" > index.html
+      
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
