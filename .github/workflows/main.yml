@@ -11,89 +11,82 @@ on:
     - cron: '1 16 * * *'  # UTC时间16:01 (北京时间00:01)
 
 permissions:
-  contents: write   # 必需写权限
-  actions: read
+  contents: write
 
 jobs:
   data-process:
     name: Process & Clean Data
     runs-on: ubuntu-latest
     env:
-      DEBUG_MODE: ${{ inputs.debug_mode || 'false' }}
+      DEBUG_MODE: ${{ github.event.inputs.debug_mode || 'false' }}
 
     steps:
       # ---------- 初始化步骤 ----------
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # 完整克隆用于历史比对
-
-      # ---------- 数据处理步骤 ----------
-      - name: Generate Data File
+        
+      # ---------- 设置Python环境 ----------
+      - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
           
+      # ---------- 数据处理步骤 ----------
+      - name: Generate Data File
         run: |
-          pip install -r requirements.txt  # 假设有依赖文件
+          pip install requests urllib3
           python main.py
           echo "生成文件列表:"
           ls -l ISP_China*.dat
-
+          
       # ---------- 智能清理步骤 ----------
       - name: Intelligent File Cleanup
-        id: cleanup
         shell: bash
         run: |
-          # 启用调试模式
-          if [ "$DEBUG_MODE" = "true" ]; then
+          # 开启调试模式
+          if [[ "$DEBUG_MODE" == "true" ]]; then
             set -x
           fi
-
-          # 日期计算（兼容跨月/跨年）
+          
+          # 计算截止日期
           cutoff_date=$(date -d "7 days ago" +%Y%m%d)
-          echo "CUTOFF_DATE=${cutoff_date}" >> $GITHUB_ENV
+          echo "清理截止日期: $cutoff_date"
           
-          # 文件清理逻辑
-          echo "▶︎ 开始扫描文件..."
+          # 文件处理逻辑
           remaining_files=()
-          
-          for file in ISP_China_*.dat; do
-            if [[ ! -f "$file" ]]; then continue; fi
-            
-            # 动态提取日期（支持多种命名格式）
-            date_part=$(echo "$file" | grep -Eo '[0-9]{8}' | head -1)
-            
-            if [[ "$date_part" =~ ^[0-9]{8}$ ]]; then
-              if [ "$date_part" -lt "$cutoff_date" ]; then
-                echo "🚫 删除过期文件: ${file} (${date_part} < ${cutoff_date})"
-                rm -v "$file"
+          for file in ISP_China*.dat; do
+            if [[ -f "$file" ]]; then
+              # 提取日期部分
+              date_part=$(echo "$file" | grep -Eo '[0-9]{8}' | head -1)
+              
+              if [[ "$date_part" =~ ^[0-9]{8}$ ]]; then
+                if [[ "$date_part" -lt "$cutoff_date" ]]; then
+                  echo "删除过期文件: $file (${date_part} < ${cutoff_date})"
+                  rm -f "$file"
+                else
+                  remaining_files+=("$file")
+                  echo "保留文件: $file"
+                fi
               else
-                remaining_files+=("$file")
-                echo "✅ 保留文件: ${file}"
+                echo "跳过非常规文件: $file"
               fi
-            else
-              echo "⚠️ 忽略非常规文件: ${file}"
             fi
           done
-
-          # 生成清理报告
+          
+          # 生成报告
           echo "剩余文件数量: ${#remaining_files[@]}"
-          printf "%-30s %s\n" "文件名" "日期" > cleanup-report.md
-          for f in "${remaining_files[@]}"; do
-            printf "%-30s %s\n" "$f" "$(date -r "$f" +%Y-%m-%d)" >> cleanup-report.md
+          echo "文件名,日期" > cleanup-report.csv
+          for file in "${remaining_files[@]}"; do
+            echo "$file,$(date -r "$file" +%Y-%m-%d)" >> cleanup-report.csv
           done
-
-      # ---------- 提交变更步骤 ----------
-      - name: Auto-Commit Changes
+          
+      # ---------- 提交变更 ----------
+      - name: Commit and Push Changes
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
-          commit_message: | 
-            Automated Data Update
-            - 新增文件: ${{ steps.generate.outputs.new_files }}
-            - 删除文件: ${{ steps.cleanup.outputs.deleted_files }}
+          commit_message: "自动更新与清理数据文件"
           file_pattern: |
-            ISP_China_*.dat
-            cleanup-report.md
-          commit_options: '--verbose --allow-empty'
-          add_options: '-u -v'
+            ISP_China*.dat
+            cleanup-report.csv
+          commit_user_name: "Data Automation"
+          commit_user_email: "data@automation"
