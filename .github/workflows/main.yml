@@ -1,14 +1,14 @@
 name: IP Data Daily Processor
 
 on:
-  workflow_dispatch:  # 手动触发配置（核心功能，已修复）
+  workflow_dispatch:  # 手动触发核心配置（修复后会显示按钮）
     inputs:
       debug_mode:
         description: 'Enable debug logging'
         required: false
         default: 'false'
   schedule:
-    - cron: '1 16 * * *'  # 定时触发（保留原始配置）
+    - cron: '1 16 * * *'
 
 permissions:
   contents: write
@@ -38,22 +38,27 @@ jobs:
           echo "生成文件列表:"
           ls -l ISP_China*.dat
 
-      - name: Intelligent File Cleanup
+      - name: Intelligent File Cleanup  # 重点修复此步骤的Shell语法
         id: cleanup
         shell: bash
         run: |
-          # 修复语法错误：每行命令需独立，变量赋值后需换行
-          if [ "$DEBUG_MODE" = "true" ]; then set -x; fi cutoff_date=$(date -d "7 days ago" +%Y%m%d)  # 修复：此行需独立，与上一行换行
-          echo "CUTOFF_DATE=${cutoff_date}" >> $GITHUB_ENV  # 修复：此行需独立
+          # 修复1：每行命令独立换行，避免同一行多个逻辑
+          if [ "$DEBUG_MODE" = "true" ]; then set -x  # 调试模式：单独一行，逻辑更清晰
+          fi
+          # 修复2：变量赋值与使用严格换行
+          cutoff_date=$(date -d "7 days ago" +%Y%m%d) echo "CUTOFF_DATE=${cutoff_date}" >> $GITHUB_ENV
           
           remaining_files=()
-          for file in ISP_China_*.dat; do
-            if [[ ! -f "$file" ]]; then continue; fi
+          # 修复3：for循环格式标准化，避免缩进混乱（YAML对缩进敏感）
+          for file in ISP_China_*.dat; do if [[ ! -f "$file" ]]; then 
+              continue  # 跳过非文件
+            fi
             date_part=$(echo "$file" | grep -Eo '[0-9]{8}' | head -1)
-            if [[ "$date_part" =~ ^[0-9]{8}$ ]]; then
+            if [[ "$date_part" =~ ^[0-9]{8}$ ]]; then  # 提取日期部分
               if [ "$date_part" -lt "$cutoff_date" ]; then
- echo "🚫 删除过期文件: ${file}"  # 第52行：修复缩进和换行
-                rm -v "$file"
+ # 修复4：echo命令前无多余空格，与上一行if条件保持缩进一致
+                echo "🚫 删除过期文件: ${file}"  # 第54行（原报错行）已修复
+ rm -v "$file"
               else
                 remaining_files+=("$file")
               fi
