@@ -33,7 +33,7 @@ jobs:
 
       - name: Generate Data File
         run: |
-          pip install -r requirements.txt
+          # The requirements.txt file is not present, so we directly run the main file.
           python main.py
           echo "生成文件列表:"
           ls -l ISP_China*.dat
