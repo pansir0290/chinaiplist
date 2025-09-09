@@ -33,8 +33,9 @@ jobs:
 
       - name: Generate Data File
         run: |
-          # The 'requests' library is not a standard library and needs to be installed.
+          # 检查并安装脚本所需的库
           pip install requests
+          # 运行主脚本，它将生成文件名格式为 ISP_ChinaYYYY-MM-DD.dat 的文件
           python main.py
           echo "生成文件列表:"
           ls -l ISP_China*.dat
@@ -48,22 +49,25 @@ jobs:
             set -x
           fi
 
-          # 2. 计算 cutoff_date（严格分行）
-          cutoff_date=$(date -d "7 days ago" +%Y%m%d)
+          # 2. 计算 cutoff_date（日期格式与Python脚本保持一致）
+          cutoff_date=$(date -d "7 days ago" +%Y-%m-%d)
           echo "CUTOFF_DATE=${cutoff_date}" >> $GITHUB_ENV
 
           # 3. 清理过期文件（for循环严格缩进）
           remaining_files=()
-          for file in ISP_China_*.dat
+          # 使用更通用的匹配模式来找到所有文件
+          for file in ISP_China*.dat
           do
             if [[ ! -f "$file" ]]; then
               continue
             fi
 
-            # 提取文件名中的日期（如ISP_China_20250101.dat → 20250101）
-            date_part=$(echo "$file" | grep -Eo '[0-9]{8}' | head -1)
-            if [[ "$date_part" =~ ^[0-9]{8}$ ]]; then # 验证日期格式
-              if [ "$date_part" -lt "$cutoff_date" ]; then # 对比日期
+            # 提取文件名中的日期（如ISP_China2025-01-01.dat → 2025-01-01）
+            date_part=$(echo "$file" | grep -Eo '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1)
+            # 验证日期格式
+            if [[ "$date_part" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+              # 对比日期，字符串比较在YYYY-MM-DD格式下是有效的
+              if [ "$date_part" \< "$cutoff_date" ]; then
                 echo "🚫 删除过期文件: ${file}"
                 rm -v "$file"
               else
@@ -76,4 +80,5 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
           commit_message: 'Automated Data Update'
-          file_pattern: 'ISP_China_*.dat'
+          # 使用更通用的模式，匹配所有 ISP_China 开头的 .dat 文件
+          file_pattern: 'ISP_China*.dat'
