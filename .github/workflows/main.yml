@@ -1,7 +1,7 @@
 name: IP Data Daily Processor
 
 on:
-  workflow_dispatch:  # 手动触发核心配置（修复后会显示按钮）
+  workflow_dispatch:  # 手动触发配置（修复后会显示按钮）
     inputs:
       debug_mode:
         description: 'Enable debug logging'
@@ -38,30 +38,30 @@ jobs:
           echo "生成文件列表:"
           ls -l ISP_China*.dat
 
-      - name: Intelligent File Cleanup  # 第40行附近（重点修复区域）
+      - name: Intelligent File Cleanup  # 第57行附近语法错误修复
         id: cleanup
         shell: bash
         run: |
-          # 修复1：每行命令独立换行，避免同一行多个逻辑
-          if [ "$DEBUG_MODE" = "true" ]; then set -x  # 调试模式单独一行，与if条件对齐
+          # 修复1：if条件与命令严格换行
+          if [ "$DEBUG_MODE" = "true" ]; then set -x  # 调试模式单独一行，缩进2个空格
           fi
-          # 修复2：变量赋值与环境变量导出严格换行 cutoff_date=$(date -d "7 days ago" +%Y%m%d) echo "CUTOFF_DATE=${cutoff_date}" >> $GITHUB_ENV
+          
+          # 修复2：变量赋值与环境变量导出独立成行（原第57行错误点） cutoff_date=$(date -d "7 days ago" +%Y%m%d) echo "CUTOFF_DATE=${cutoff_date}" >> $GITHUB_ENV
           
           remaining_files=()
-          # 修复3：for循环格式标准化，缩进统一为2个空格
+          # 修复3：for循环格式标准化，避免同一行多个逻辑
           for file in ISP_China_*.dat; do if [[ ! -f "$file" ]]; then
-              continue  # 跳过非文件
+              continue  # 跳过非文件，缩进2个空格
             fi
             date_part=$(echo "$file" | grep -Eo '[0-9]{8}' | head -1)
             if [[ "$date_part" =~ ^[0-9]{8}$ ]]; then
               if [ "$date_part" -lt "$cutoff_date" ]; then
- echo "🚫 删除过期文件: ${file}"  # 与上一行if条件缩进对齐
-                rm -v "$file"
+ echo "🚫 删除过期文件: ${file}"  # 与if条件缩进对齐（2个空格） rm -v "$file"  # 同一层级缩进一致
               else
                 remaining_files+=("$file")
               fi
             fi
-          done
+          done  # 循环结束符与for对齐
 
       - name: Auto-Commit Changes
         uses: stefanzweifel/git-auto-commit-action@v4
