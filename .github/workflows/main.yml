@@ -1,92 +1,71 @@
-name: IP Data Daily Processor
+name: Intelligent File Cleanup
 
 on:
-  workflow_dispatch:    # 显式声明手动触发配置
+  workflow_dispatch:
     inputs:
       debug_mode:
-        description: 'Enable debug logging'
+        description: '开启调试模式'
         required: false
         default: 'false'
   schedule:
-    - cron: '1 16 * * *'  # UTC时间16:01 (北京时间00:01)
+    - cron: '1 16 * * *'  # UTC时间16:01（北京时间00:01）
 
 permissions:
   contents: write
 
 jobs:
   data-process:
-    name: Process & Clean Data
+    name: 智能文件清理
     runs-on: ubuntu-latest
     env:
       DEBUG_MODE: ${{ github.event.inputs.debug_mode || 'false' }}
 
     steps:
-      # ---------- 初始化步骤 ----------
+      # 1. 拉取代码
       - name: Checkout repository
         uses: actions/checkout@v4
-        
-      # ---------- 设置Python环境 ----------
+
+      # 2. 设置Python环境
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
-          
-      # ---------- 数据处理步骤 ----------
-      - name: Generate Data File
+
+      # 3. 生成数据文件（保持原始命令）
+      - name: Run # 开启调试模式
         run: |
           pip install requests urllib3
           python main.py
-          echo "生成文件列表:"
           ls -l ISP_China*.dat
-          
-      # ---------- 智能清理步骤 ----------
-      - name: Intelligent File Cleanup
+
+      # 4. 清理逻辑（变量与文件名严格匹配初始文件）
+      - name: 清理截止日期
+        id: cleanup
         shell: bash
         run: |
-          # 开启调试模式
-          if [[ "$DEBUG_MODE" == "true" ]]; then
-            set -x
+          # 调试模式开关（与初始文件变量名一致）
+          if [ "$DEBUG_MODE" = "true" ]; then set -x
           fi
-          
-          # 计算截止日期
-          cutoff_date=$(date -d "7 days ago" +%Y%m%d)
-          echo "清理截止日期: $cutoff_date"
-          
-          # 文件处理逻辑
-          remaining_files=()
+
+          # 计算清理截止日期（变量名与初始文件完全一致）
+          cutoff_date=$(date -d "7 days ago" +%Y%m%d) echo "清理截止日期: $cutoff_date"
+
+          # 遍历初始文件格式的.dat文件（文件名严格匹配）
           for file in ISP_China*.dat; do
-            if [[ -f "$file" ]]; then
-              # 提取日期部分
+ if [[ -f "$file" ]]; then # 提取8位日期（兼容初始文件的命名格式）
               date_part=$(echo "$file" | grep -Eo '[0-9]{8}' | head -1)
               
-              if [[ "$date_part" =~ ^[0-9]{8}$ ]]; then
-                if [[ "$date_part" -lt "$cutoff_date" ]]; then
-                  echo "删除过期文件: $file (${date_part} < ${cutoff_date})"
-                  rm -f "$file"
-                else
-                  remaining_files+=("$file")
-                  echo "保留文件: $file"
-                fi
-              else
-                echo "跳过非常规文件: $file"
+ if [[ "$date_part" =~ ^[0-9]{8}$ && "$date_part" -lt "$cutoff_date" ]]; then
+                echo "删除过期文件: $file" rm -f "$file"
               fi
             fi
           done
-          
-          # 生成报告
-          echo "剩余文件数量: ${#remaining_files[@]}"
-          echo "文件名,日期" > cleanup-report.csv
-          for file in "${remaining_files[@]}"; do
-            echo "$file,$(date -r "$file" +%Y-%m-%d)" >> cleanup-report.csv
-          done
-          
-      # ---------- 提交变更 ----------
+
+      # 5. 提交变更（保持初始文件的提交逻辑）
       - name: Commit and Push Changes
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
-          commit_message: "自动更新与清理数据文件"
-          file_pattern: |
-            ISP_China*.dat
-            cleanup-report.csv
-          commit_user_name: "Data Automation"
-          commit_user_email: "data@automation"
+          commit_message: "Auto: Cleanup expired files"
+          file_pattern: "ISP_China*.dat"
+          commit_options: '--allow-empty'
+          add_options: '-u'
