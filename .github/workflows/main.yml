@@ -1,14 +1,14 @@
 name: IP Data Daily Processor
 
 on:
-  workflow_dispatch:  # 手动触发配置（修复后会显示按钮）
+  workflow_dispatch:  # 手动触发（修复后必显示按钮）
     inputs:
       debug_mode:
         description: 'Enable debug logging'
         required: false
         default: 'false'
   schedule:
-    - cron: '1 16 * * *'
+    - cron: '1 16 * * *'  # 定时触发
 
 permissions:
   contents: write
@@ -38,30 +38,35 @@ jobs:
           echo "生成文件列表:"
           ls -l ISP_China*.dat
 
-      - name: Intelligent File Cleanup  # 第57行附近语法错误修复
+      - name: Intelligent File Cleanup  # 彻底修复Shell命令语法
         id: cleanup
         shell: bash
         run: |
-          # 修复1：if条件与命令严格换行
-          if [ "$DEBUG_MODE" = "true" ]; then set -x  # 调试模式单独一行，缩进2个空格
-          fi
-          
-          # 修复2：变量赋值与环境变量导出独立成行（原第57行错误点） cutoff_date=$(date -d "7 days ago" +%Y%m%d) echo "CUTOFF_DATE=${cutoff_date}" >> $GITHUB_ENV
-          
+          # 1. 调试模式（严格分行+缩进）
+          if [ "$DEBUG_MODE" = "true" ]; then set -x  # 缩进2个空格（与if对齐）
+          fi  # 单独成行闭合
+
+          # 2. 计算 cutoff_date（严格分行）
+          cutoff_date=$(date -d "7 days ago" +%Y%m%d)  # 独立行
+          echo "CUTOFF_DATE=${cutoff_date}" >> $GITHUB_ENV  # 独立行
+
+          # 3. 清理过期文件（for循环严格缩进）
           remaining_files=()
-          # 修复3：for循环格式标准化，避免同一行多个逻辑
-          for file in ISP_China_*.dat; do if [[ ! -f "$file" ]]; then
-              continue  # 跳过非文件，缩进2个空格
-            fi
+          for file in ISP_China_*.dat; do  # for与do分行
+            if [[ ! -f "$file" ]]; then  # 缩进2个空格（for循环内）
+              continue  # 再缩进2个空格（if条件内）
+            fi  # 单独成行闭合
+
+            # 提取文件名中的日期（如ISP_China_20250101.dat → 20250101）
             date_part=$(echo "$file" | grep -Eo '[0-9]{8}' | head -1)
-            if [[ "$date_part" =~ ^[0-9]{8}$ ]]; then
-              if [ "$date_part" -lt "$cutoff_date" ]; then
- echo "🚫 删除过期文件: ${file}"  # 与if条件缩进对齐（2个空格） rm -v "$file"  # 同一层级缩进一致
-              else
-                remaining_files+=("$file")
+            if [[ "$date_part" =~ ^[0-9]{8}$ ]]; then  # 验证日期格式
+              if [ "$date_part" -lt "$cutoff_date" ]; then  # 对比日期
+                echo "🚫 删除过期文件: ${file}"  # 缩进2个空格（if条件内）
+ rm -v "$file"  # 与echo同一层级（缩进一致） else
+                remaining_files+=("$file")  # 保留最新文件
               fi
             fi
-          done  # 循环结束符与for对齐
+          done  # for循环闭合（与for对齐）
 
       - name: Auto-Commit Changes
         uses: stefanzweifel/git-auto-commit-action@v4
