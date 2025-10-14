@@ -1,84 +1,125 @@
 name: IP Data Daily Processor
 
+# -------------------------------------------------------------------
+# 触发机制
+# -------------------------------------------------------------------
 on:
+  # 允许手动在 GitHub 页面上触发工作流
   workflow_dispatch:
     inputs:
       debug_mode:
-        description: 'Enable debug logging'
+        description: 'Enable debug logging (set -x in shell steps)'
         required: false
         default: 'false'
+  # 每日定时运行（UTC 时间 16:01，即北京时间凌晨 00:01）
   schedule:
     - cron: '1 16 * * *'
 
+# 授予工作流写入代码仓库的权限，用于提交更改
 permissions:
   contents: write
 
+# -------------------------------------------------------------------
+# 主要任务
+# -------------------------------------------------------------------
 jobs:
   data-process:
-    name: Process & Clean Data
+    name: Process & Update IP Data
     runs-on: ubuntu-latest
     env:
+      # 将输入或默认值设置为环境变量
       DEBUG_MODE: ${{ github.event.inputs.debug_mode || 'false' }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          # 确保拉取完整历史记录，以便 git-auto-commit-action 工作正常
           fetch-depth: 0
 
-      - name: Setup Python
+      - name: Setup Python 3.10
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 
       - name: Generate Data File
         run: |
+          echo "Installing Python dependencies..."
           # 检查并安装脚本所需的库
           pip install requests
+          
+          echo "Running main.py script..."
           # 运行主脚本，它将生成文件名格式为 ISP_ChinaYYYY-MM-DD.dat 的文件
           python main.py
-          echo "生成文件列表:"
-          ls -l ISP_China*.dat
+          
+          echo "Generated file list:"
+          ls -l ISP_China*.dat || true
 
-      - name: Intelligent File Cleanup # 彻底修复Shell命令语法
+      - name: Create Latest Fixed Link File # 确保对外引用的固定链接始终指向最新数据
+        id: latest_file_prep
+        shell: bash
+        run: |
+          if [ "$DEBUG_MODE" = "true" ]; then set -x; fi
+          
+          # 找到当天生成的文件名（假设 main.py 总是生成最新的文件）
+          # ls -t 按修改时间排序，head -1 取第一个
+          LATEST_FILE=$(ls -t ISP_China*.dat | head -1)
+
+          if [ -f "$LATEST_FILE" ]; then
+            # 定义固定文件名
+            FIXED_FILENAME="ISP_China_Latest.dat"
+            
+            # 复制内容到固定文件，以便对外发布固定链接
+            cp "$LATEST_FILE" "$FIXED_FILENAME"
+            
+            echo "✅ Created fixed file: $FIXED_FILENAME"
+            echo "Copied from: $LATEST_FILE"
+          else
+            echo "❌ ERROR: New data file not found. Skipping fixed file creation."
+          fi
+
+      - name: Intelligent File Cleanup
         id: cleanup
         shell: bash
         run: |
-          # 1. 调试模式（严格分行+缩进）
-          if [ "$DEBUG_MODE" = "true" ]; then
-            set -x
-          fi
-
-          # 2. 计算 cutoff_date（日期格式与Python脚本保持一致）
+          if [ "$DEBUG_MODE" = "true" ]; then set -x; fi
+          
+          # 计算截止日期（保留最近 7 天的文件）
           cutoff_date=$(date -d "7 days ago" +%Y-%m-%d)
-          echo "CUTOFF_DATE=${cutoff_date}" >> $GITHUB_ENV
+          echo "CUTOFF_DATE=${cutoff_date}"
 
-          # 3. 清理过期文件（for循环严格缩进）
-          remaining_files=()
-          # 使用更通用的匹配模式来找到所有文件
-          for file in ISP_China*.dat
+          deleted_count=0
+          # 遍历所有 ISP_China 日期文件
+          for file in ISP_China[0-9]*.dat
           do
             if [[ ! -f "$file" ]]; then
               continue
             fi
 
-            # 提取文件名中的日期（如ISP_China2025-01-01.dat → 2025-01-01）
+            # 提取日期部分
             date_part=$(echo "$file" | grep -Eo '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1)
-            # 验证日期格式
-            if [[ "$date_part" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
-              # 对比日期，字符串比较在YYYY-MM-DD格式下是有效的
-              if [ "$date_part" \< "$cutoff_date" ]; then
-                echo "🚫 删除过期文件: ${file}"
+            
+            # 确保只清理日期文件，不清理 ISP_China_Latest.dat
+            if [ "$file" != "ISP_China_Latest.dat" ] && [[ "$date_part" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+              # 日期比较：如果文件日期早于截止日期
+              if [ "$date_part" < "$cutoff_date" ]; then
+                echo "🚫 Deleting old file: ${file}"
                 rm -v "$file"
-              else
-                remaining_files+=("$file") # 保留最新文件
+                deleted_count=$((deleted_count + 1))
+              # else
+                # echo "✅ Retaining file: ${file}"
               fi
             fi
           done
+          
+          echo "Total files deleted: ${deleted_count}"
+          echo "Current files remaining:"
+          ls -l ISP_China*.dat || true
 
       - name: Auto-Commit Changes
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
-          commit_message: 'Automated Data Update'
-          # 使用更通用的模式，匹配所有 ISP_China 开头的 .dat 文件
+          commit_message: 'Automated IP Data Update'
+          # 匹配所有 ISP_China 开头的 .dat 文件，包括日期文件和 ISP_China_Latest.dat
           file_pattern: 'ISP_China*.dat'
+          # git-auto-commit-action 会自动处理添加、修改和删除的文件
